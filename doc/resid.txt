@@ -1,0 +1,76 @@
+*resid.txt*  Resid language support for Neovim
+
+==============================================================================
+CONTENTS                                                      *resid-contents*
+
+  1. Introduction ........................................ |resid-intro|
+  2. Setup ............................................... |resid-setup|
+  3. Language server ..................................... |resid-lsp|
+  4. Compiling ........................................... |resid-compile|
+  5. Snippets ............................................ |resid-snippets|
+  6. Health .............................................. |resid-health|
+
+==============================================================================
+1. INTRODUCTION                                                  *resid-intro*
+
+Filetype detection, syntax highlighting, indentation, folding, a |:compiler|
+definition, snippets and the Resid language server (`residc lsp`) for
+Neovim 0.11 or later. `resid.toml` opens with the `toml` filetype.
+
+==============================================================================
+2. SETUP                                                         *resid-setup*
+
+Nothing is required: the plugin enables the language server on load.
+To change the defaults: >lua
+  require('resid').setup({
+    compiler = nil,   -- path to residc; nil finds one
+    lsp = true,       -- vim.lsp.enable('resid')
+    lsp_config = {},  -- merged into vim.lsp.config('resid')
+  })
+<
+                                                    *resid.compiler()*
+require('resid').compiler({dir})
+    The compiler: `setup({compiler})` or |g:resid_compiler|, then the
+    nearest `build/boot/stage2.bin` above {dir} (inside a Resid checkout),
+    then `residc` on $PATH.
+
+                                                    *g:resid_lsp*
+g:resid_lsp     Set to |v:false| before the plugin loads to leave the language
+                server off.
+
+==============================================================================
+3. LANGUAGE SERVER                                                 *resid-lsp*
+
+`lsp/resid.lua` defines the configuration `resid` for |vim.lsp.config()|: the
+command is `<compiler> lsp`, the root the nearest `resid.toml` or `.git`.
+The server gives diagnostics with the compiler's error codes, hover
+(signature, `///` docs, type, f-string format spec), go to definition across
+imports, document symbols, and completion of keywords, top-level names,
+annotations and format flags. The usual mappings apply (|lsp-defaults|):
+|K| for hover, |CTRL-]| for definition, `gO` for symbols.
+
+==============================================================================
+4. COMPILING                                                   *resid-compile*
+
+The filetype plugin runs `:compiler resid`: |:make| compiles the current file
+with `residc % -o %:r` and fills the quickfix list from the compiler's
+`error[E....]` and `warning[E....]` reports.
+
+==============================================================================
+5. SNIPPETS                                                   *resid-snippets*
+
+`snippets/` holds VSCode-format snippets with a `package.json`, the layout
+LuaSnip (`require('luasnip.loaders.from_vscode').lazy_load()`) and
+blink.cmp (`sources.providers.snippets.opts.search_paths`) read. Prefixes:
+`fn`, `pfn`, `main`, `requires`, `needs`, `let`, `rlet`, `tstruct`, `tenum`,
+`twhere`, `behavior`, `inst`, `match`, `if`, `ife`, `while`, `for`, `lambda`,
+`spawn`, `sandbox`, `test`, `import`, `importn`, `importas`, `importreq`,
+`assert`, `rt_assert`, `doc`, `fstr`.
+
+==============================================================================
+6. HEALTH                                                       *resid-health*
+
+`:checkhealth resid` reports the Neovim version, the compiler it found and
+whether the language server is running.
+
+ vim:tw=78:ts=8:ft=help:norl:

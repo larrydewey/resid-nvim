@@ -1,0 +1,9 @@
+{
+  "name": "resid-snippets",
+  "description": "Snippets for the Resid language",
+  "contributes": {
+    "snippets": [
+      { "language": ["resid"], "path": "./resid.json" }
+    ]
+  }
+}
