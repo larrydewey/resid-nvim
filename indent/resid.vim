@@ -16,7 +16,58 @@ if exists('*GetResidIndent')
   finish
 endif
 
-let s:skip = 'synIDattr(synID(line("."), col("."), 0), "name") =~? "string\\|comment\\|char\\|quote"'
+let s:skip = 's:Skip(line("."), col("."))'
+
+" A copy of line lnum with every character inside a string, char or //
+" comment replaced by a space. Scanned by hand rather than read from the
+" syntax: a string cut off at 'synmaxcol' would bleed into later lines.
+let s:masks = {}
+let s:masks_tick = -1
+function! s:Mask(lnum) abort
+  if s:masks_tick != b:changedtick || get(s:, 'masks_buf', -1) != bufnr('')
+    let s:masks = {}
+    let s:masks_tick = b:changedtick
+    let s:masks_buf = bufnr('')
+  endif
+  if has_key(s:masks, a:lnum)
+    return s:masks[a:lnum]
+  endif
+  let chars = split(getline(a:lnum), '\zs')
+  let quote = ''
+  let i = 0
+  let n = len(chars)
+  while i < n
+    let c = chars[i]
+    if quote !=# ''
+      let chars[i] = ' '
+      if c ==# '\' && i + 1 < n
+        let i += 1
+        let chars[i] = ' '
+      elseif c ==# quote
+        let quote = ''
+      endif
+    elseif c ==# '"' || c ==# "'"
+      let quote = c
+      let chars[i] = ' '
+    elseif c ==# '/' && i + 1 < n && chars[i + 1] ==# '/'
+      call map(chars, {k, v -> k >= i ? ' ' : v})
+      break
+    endif
+    let i += 1
+  endwhile
+  let s:masks[a:lnum] = join(chars, '')
+  return s:masks[a:lnum]
+endfunction
+
+" Whether the bracket at lnum, col is in a string, char or comment.
+function! s:Skip(lnum, col) abort
+  let line = getline(a:lnum)
+  let idx = charidx(line, a:col - 1)
+  if s:Mask(a:lnum)[byteidx(s:Mask(a:lnum), idx)] ==# ' '
+    return 1
+  endif
+  return a:col <= &synmaxcol && synIDattr(synID(a:lnum, a:col, 0), 'name') =~? 'comment'
+endfunction
 
 " The innermost unclosed bracket before the cursor: [line, col], or [0, 0].
 function! s:Opener(lnum) abort
@@ -29,19 +80,24 @@ function! s:Opener(lnum) abort
   return searchpairpos('[{([]', '', '[})\]]', 'bnW', s:skip, max([1, stop]))
 endfunction
 
+" The indentation of the statement holding the bracket at pos: a line that
+" starts inside a parenthesis or square bracket (a continued parameter
+" list) counts as part of the line that opened it.
+function! s:Anchor(pos) abort
+  let lnum = a:pos[0]
+  while 1
+    let up = s:Opener(lnum)
+    if up[0] == 0 || getline(up[0])[up[1] - 1] !~# '[([]'
+      return indent(lnum)
+    endif
+    let lnum = up[0]
+  endwhile
+endfunction
+
 " Strip a trailing // comment and whitespace (strings may hold `//`, so
 " only when the comment is outside one).
 function! s:Code(lnum) abort
-  let line = getline(a:lnum)
-  let c = match(line, '//')
-  while c >= 0
-    if synIDattr(synID(a:lnum, c + 1, 0), 'name') !~? 'string\|quote'
-      let line = strpart(line, 0, c)
-      break
-    endif
-    let c = match(line, '//', c + 2)
-  endwhile
-  return substitute(line, '\s\+$', '', '')
+  return substitute(s:Mask(a:lnum), '\s\+$', '', '')
 endfunction
 
 " Whether a line ends a statement or an item, rather than continuing an
@@ -75,7 +131,7 @@ function! GetResidIndent(lnum) abort
   if open[0] == 0
     let base = 0
   elseif cur =~# '^\s*[})\]]'
-    let base = indent(open[0])
+    let base = s:Anchor(open)
   else
     let rest = strpart(getline(open[0]), open[1])
     let first = match(rest, '\S')
@@ -83,12 +139,12 @@ function! GetResidIndent(lnum) abort
       " Content after the bracket: align with it.
       let base = open[1] + first
     else
-      let base = indent(open[0]) + shiftwidth()
+      let base = s:Anchor(open) + shiftwidth()
     endif
   endif
   " A line continuing an unfinished expression is indented once more.
   let p = s:PrevSibling(a:lnum, open)
-  if p > 0 && cur !~# '^\s*[})\]]' && !s:Complete(p)
+  if p > 0 && cur !~# '^\s*[})\]]' && (cur =~# '^\s*else\>' || !s:Complete(p))
     let q = s:PrevSibling(p, open)
     let base = (q > 0 && !s:Complete(q)) ? indent(p) : base + shiftwidth()
   endif
